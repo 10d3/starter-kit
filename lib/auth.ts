@@ -1,60 +1,85 @@
+
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
-import { prisma } from "./prisma";
-import { stripe } from "@better-auth/stripe"
-import { stripeClient } from "@/lib/stripe"
-import { magicLink, lastLoginMethod, haveIBeenPwned, organization } from "better-auth/plugins";
-import { sendEmailVerificaiton, sendMagicLink, sendOrgInvitation, sendResetPassowrdMail } from "./resend";
 import { nextCookies } from "better-auth/next-js";
+import {
+  magicLink,
+  lastLoginMethod,
+  haveIBeenPwned,
+  organization
+} from "better-auth/plugins";
+import { stripe } from "@better-auth/stripe";
+import { prisma } from "./prisma";
+import { stripeClient } from "./stripe";
 import { env } from "./env";
+import {
+  sendEmailVerification,
+  sendMagicLink,
+  sendOrgInvitation,
+  sendResetPasswordMail,
+} from "./resend";
 
 export const auth = betterAuth({
   database: prismaAdapter(prisma, {
-    provider: "postgresql", // or "mysql", "postgresql", ...etc
+    provider: "postgresql",
   }),
+
   emailAndPassword: {
     enabled: true,
+    requireEmailVerification: true,
     async sendResetPassword({ user, url }) {
-      sendResetPassowrdMail(user.email, user.email, user.name, url)
+      await sendResetPasswordMail(user.email, user.name, url);
     },
-    requireEmailVerification: true
   },
+
   emailVerification: {
-    sendVerificationEmail: async ({ user, url }) => {
-      sendEmailVerificaiton(user.email, user.name, url)
+    sendOnSignUp: true,
+    async sendVerificationEmail({ user, url }) {
+      await sendEmailVerification(user.email, user.name, url);
     },
-    sendOnSignUp: true
   },
+
   socialProviders: {
     github: {
-      clientId: process.env.GITHUB_CLIENT_ID as string,
-      clientSecret: process.env.GITHUB_CLIENT_SECRET as string,
+      clientId: env.GITHUB_CLIENT_ID,
+      clientSecret: env.GITHUB_CLIENT_SECRET,
     },
     google: {
-      clientId: process.env.GOOGLE_CLIENT_ID as string,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET as string,
+      clientId: env.GOOGLE_CLIENT_ID,
+      clientSecret: env.GOOGLE_CLIENT_SECRET,
     },
   },
+
   plugins: [
     stripe({
       stripeClient,
-      stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET!,
+      stripeWebhookSecret: env.STRIPE_WEBHOOK_SECRET,
       createCustomerOnSignUp: true,
     }),
+
     magicLink({
-      sendMagicLink: async ({ email, url }) => {
-        sendMagicLink(email, url)
-      }
-    }),
-    organization({
-      async sendInvitationEmail(data) {
-        const inviteLink = `${env.BETTER_AUTH_URL}/api/accept-invitaion/${data.id}`
-        sendOrgInvitation(data.email, data.organization.name, data.inviter.user.name, data.inviter.user.email, inviteLink)
+      async sendMagicLink({ email, url }) {
+        await sendMagicLink(email, url);
       },
-      roles: {}
     }),
+
+    organization({
+      roles: {},
+      async sendInvitationEmail(data) {
+        const inviteLink = `${env.BETTER_AUTH_URL}/api/accept-invitation/${data.id}`;
+        await sendOrgInvitation(
+          data.email,
+          data.organization.name,
+          data.inviter.user.name,
+          data.inviter.user.email,
+          inviteLink
+        );
+      },
+    }),
+
     lastLoginMethod(),
     haveIBeenPwned(),
-    nextCookies()
-  ]
+    nextCookies(),
+  ],
 });
+
